@@ -1,0 +1,74 @@
+name: reusable-rust-ci
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        description: 'Rust toolchain channel (used only when no rust-toolchain.toml is present)'
+        type: string
+        default: 'stable'
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Detect Rust workspace
+        id: detect
+        run: |
+          if [ -f Cargo.toml ] || find . -path ./.git -prune -o -name Cargo.toml -print | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No Cargo.toml found; skipping Rust CI."
+          fi
+
+      - name: Select Rust toolchain
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          # GitHub runners ship rustup. rust-toolchain.toml is auto-respected when present.
+          if [ -f rust-toolchain.toml ] || [ -f rust-toolchain ]; then
+            rustup show active-toolchain
+          else
+            rustup toolchain install "${{ inputs.toolchain }}" --profile minimal --component clippy rustfmt rust-docs
+          fi
+          rustup component add clippy rustfmt rust-docs 2>/dev/null || true
+          cargo --version
+          rustc --version
+
+      - name: cargo fmt --check
+        if: steps.detect.outputs.present == 'true'
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (pedantic, deny warnings)
+        if: steps.detect.outputs.present == 'true'
+        run: cargo clippy --all-targets --all-features -- -W clippy::pedantic -D warnings
+
+      - name: cargo build
+        if: steps.detect.outputs.present == 'true'
+        run: cargo build --all-targets --all-features --locked
+
+      - name: cargo test
+        if: steps.detect.outputs.present == 'true'
+        run: cargo test --all-targets --all-features
+
+      - name: cargo doc
+        if: steps.detect.outputs.present == 'true'
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps --all-features
