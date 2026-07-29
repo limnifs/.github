@@ -1,0 +1,45 @@
+name: reusable-spec-lint
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  spec:
+    name: Spec lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Detect FlatBuffers schemas
+        id: detect
+        run: |
+          if find . -path ./.git -prune -o -name '*.fbs' -print | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No .fbs files found; skipping spec lint."
+          fi
+
+      - name: Install flatc
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatbuffers-compiler
+
+      - name: Compile FlatBuffers schemas
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          set -e
+          while IFS= read -r f; do
+            echo "Linting $f"
+            flatc --schema --binary --no-warnings "$f"
+          done < <(find . -path ./.git -prune -o -name '*.fbs' -print)

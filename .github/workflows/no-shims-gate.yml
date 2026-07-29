@@ -1,0 +1,48 @@
+name: reusable-no-shims-gate
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  no-shims:
+    name: No-shims / no-stubs gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Scan for shim/stub patterns
+        run: |
+          set +e
+          # Patterns that indicate shim/stub code in Rust.
+          # Escape hatch: a same-line comment referencing the owning task file,
+          # e.g.  todo!()  // TODO.impl/01-spec/01-flatbuffers-schema.md
+          PATTERN='(todo!\s*\(|unimplemented!\s*\(|unreachable!\s*\(|#\[ignore)'
+          offenders="$(grep -rEn --include='*.rs' "$PATTERN" . 2>/dev/null || true)"
+          if [ -z "$offenders" ]; then
+            echo "No shim/stub patterns found. Clean."
+            exit 0
+          fi
+          real=""
+          while IFS= read -r line; do
+            if ! echo "$line" | grep -qE 'TODO\.impl/|task-file:'; then
+              real="${real}${line}"$'\n'
+            fi
+          done <<< "$offenders"
+          if [ -n "$real" ]; then
+            echo "::error::Shim/stub patterns found without a linked task file:"
+            printf '%s\n' "$real"
+            echo "::error::Each todo!/unimplemented!/unreachable!()/#[ignore] must carry a"
+            echo "::error::same-line comment referencing its owning task, e.g."
+            echo "::error::  todo!()  // TODO.impl/01-spec/01-flatbuffers-schema.md"
+            exit 1
+          fi
+          echo "All shim/stub instances carry linked task files. OK."
