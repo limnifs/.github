@@ -40,11 +40,13 @@ jobs:
       - name: Install MSRV toolchain
         if: steps.detect.outputs.present == 'true'
         run: rustup toolchain install "${{ inputs.msrv }}" --profile minimal
-      - name: cargo check (MSRV, all features)
+      - name: cargo check (MSRV)
         if: steps.detect.outputs.present == 'true'
         run: |
           export RUSTUP_TOOLCHAIN="${{ inputs.msrv }}"
-          cargo check --workspace --all-features --locked
+          # Default features: optional deps carry their own MSRVs
+          # that are not the consumer's contract.
+          cargo check --workspace --locked
 
   rust:
     name: Rust (${{ matrix.os }})
