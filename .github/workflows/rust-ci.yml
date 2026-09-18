@@ -17,7 +17,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Full platform review: both Linux ISAs natively, both
+        # macOS ISAs, both Windows ISAs (public repos get the ARM
+        # runners free).
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
