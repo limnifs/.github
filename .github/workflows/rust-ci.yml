@@ -7,11 +7,45 @@ on:
         description: 'Rust toolchain channel (used only when no rust-toolchain.toml is present)'
         type: string
         default: 'stable'
+      msrv:
+        description: 'Minimum supported Rust version — when set, one extra job compiles the workspace on it (check only; dev-deps drift faster than the MSRV contract)'
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
+  msrv:
+    name: MSRV (${{ inputs.msrv }})
+    if: inputs.msrv != ''
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Detect Rust workspace
+        id: detect
+        run: |
+          if [ -f Cargo.toml ] || find . -path ./.git -prune -o -name Cargo.toml -print | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No Cargo.toml found; skipping MSRV check."
+          fi
+      - name: Install MSRV toolchain
+        if: steps.detect.outputs.present == 'true'
+        run: rustup toolchain install "${{ inputs.msrv }}" --profile minimal
+      - name: cargo check (MSRV, all features)
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          export RUSTUP_TOOLCHAIN="${{ inputs.msrv }}"
+          cargo check --workspace --all-features --locked
+
   rust:
     name: Rust (${{ matrix.os }})
     strategy:
